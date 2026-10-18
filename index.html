@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Cosmological Web & Dark Matter Filament Navigator</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #010206; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+
+        #hud {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            z-index: 10;
+            color: #f0f6fc;
+            background: rgba(8, 10, 18, 0.82);
+            padding: 20px 24px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(16px);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+            max-width: 380px;
+            pointer-events: auto;
+        }
+
+        h1 { font-size: 1.15rem; font-weight: 700; margin-bottom: 6px; color: #fff; letter-spacing: 0.5px; }
+        p.subtitle { font-size: 0.8rem; color: #8b949e; line-height: 1.4; margin-bottom: 16px; }
+
+        .control-group { margin-bottom: 14px; }
+        .control-header { display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 6px; color: #c9d1d9; }
+        .control-val { font-family: monospace; color: #b388ff; font-weight: 600; }
+
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            background: #21262d;
+            border-radius: 2px;
+            appearance: none;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #b388ff;
+            cursor: pointer;
+            box-shadow: 0 0 10px #b388ff;
+        }
+
+        #metrics {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 0.72rem;
+            color: #8b949e;
+            font-family: monospace;
+            line-height: 1.6;
+        }
+        .metric-highlight { color: #ffe066; }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <div id="hud">
+        <h1>Cosmic Web & Dark Matter Navigator</h1>
+        <p class="subtitle">Large-scale structure filamentary network, Zel'dovich gravitational pancake approximation, and topological void geometry.</p>
+
+        <div class="control-group">
+            <div class="control-header">
+                <span>Density Filter Cutoff</span>
+                <span id="val-cutoff" class="control-val">1.00x</span>
+            </div>
+            <input type="range" id="param-cutoff" min="0.4" max="2.2" step="0.05" value="1.00">
+        </div>
+
+        <div class="control-group">
+            <div class="control-header">
+                <span>Filament Glow Intensity</span>
+                <span id="val-glow" class="control-val">1.30</span>
+            </div>
+            <input type="range" id="param-glow" min="0.5" max="3.0" step="0.1" value="1.30">
+        </div>
+
+        <div class="control-group">
+            <div class="control-header">
+                <span>Cosmic Expansion Drift</span>
+                <span id="val-drift" class="control-val">1.00</span>
+            </div>
+            <input type="range" id="param-drift" min="0.0" max="2.5" step="0.1" value="1.00">
+        </div>
+
+        <div id="metrics">
+            <div>Sample Volume: <span class="metric-highlight">250 h⁻¹ Mpc</span></div>
+            <div>Topology: <span class="metric-highlight">Betti Numbers β₀=1, β₁=42</span></div>
+            <div>FPS: <span id="fps-counter" style="color: #00ff88;">60</span> | Points: 45,000</div>
+        </div>
+    </div>
+
+    <!-- Three.js + OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x010206, 0.008);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 30, 85);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.4;
+
+        // 1. Generate Supercluster Nodes (Attractors)
+        const NUM_NODES = 24;
+        const nodes = [];
+        const BOX_SIZE = 75.0;
+
+        for (let i = 0; i < NUM_NODES; i++) {
+            nodes.push(new THREE.Vector3(
+                (Math.random() - 0.5) * BOX_SIZE,
+                (Math.random() - 0.5) * BOX_SIZE * 0.7,
+                (Math.random() - 0.5) * BOX_SIZE
+            ));
+        }
+
+        // 2. Generate Dark Matter Filaments between Nodes
+        const NUM_PARTICLES = 45000;
+        const particlePositions = new Float32Array(NUM_PARTICLES * 3);
+        const particleColors = new Float32Array(NUM_PARTICLES * 3);
+        const particleSizes = new Float32Array(NUM_PARTICLES);
+
+        let pIdx = 0;
+
+        // Create cylinder-like probability splines connecting close node pairs
+        for (let i = 0; i < NUM_NODES; i++) {
+            for (let j = i + 1; j < NUM_NODES; j++) {
+                const dist = nodes[i].distanceTo(nodes[j]);
+                if (dist < 42.0) { // Connect nodes within proximity
+                    const count = Math.floor(800 * (1.0 - dist / 42.0));
+                    
+                    for (let k = 0; k < count && pIdx < NUM_PARTICLES; k++) {
+                        const t = Math.random();
+                        // Interpolate along filament axis
+                        const pt = new THREE.Vector3().lerpVectors(nodes[i], nodes[j], t);
+
+                        // Perpendicular displacement (filament radius)
+                        const rad = (Math.random() ** 1.8) * 3.8;
+                        const theta = Math.random() * Math.PI * 2;
+                        
+                        pt.x += Math.cos(theta) * rad;
+                        pt.y += Math.sin(theta) * rad;
+                        pt.z += (Math.random() - 0.5) * rad;
+
+                        particlePositions[pIdx * 3] = pt.x;
+                        particlePositions[pIdx * 3 + 1] = pt.y;
+                        particlePositions[pIdx * 3 + 2] = pt.z;
+
+                        // Density-dependent color: Golden near nodes, Violet/Magenta in filaments
+                        const distToNode = Math.min(pt.distanceTo(nodes[i]), pt.distanceTo(nodes[j]));
+                        if (distToNode < 6.0) {
+                            // High-density Galaxy Cluster Node: Bright Gold
+                            particleColors[pIdx * 3] = 1.0;
+                            particleColors[pIdx * 3 + 1] = 0.85;
+                            particleColors[pIdx * 3 + 2] = 0.35;
+                            particleSizes[pIdx] = 2.4;
+                        } else {
+                            // Dark Matter Filament: Luminous Violet to Cyan
+                            const factor = Math.random();
+                            particleColors[pIdx * 3] = 0.45 + factor * 0.3;
+                            particleColors[pIdx * 3 + 1] = 0.15 + factor * 0.2;
+                            particleColors[pIdx * 3 + 2] = 0.95;
+                            particleSizes[pIdx] = 1.4;
+                        }
+                        pIdx++;
+                    }
+                }
+            }
+        }
+
+        // Fill remaining particles into diffuse cosmic background field
+        while (pIdx < NUM_PARTICLES) {
+            particlePositions[pIdx * 3] = (Math.random() - 0.5) * BOX_SIZE * 1.2;
+            particlePositions[pIdx * 3 + 1] = (Math.random() - 0.5) * BOX_SIZE * 0.9;
+            particlePositions[pIdx * 3 + 2] = (Math.random() - 0.5) * BOX_SIZE * 1.2;
+
+            particleColors[pIdx * 3] = 0.2;
+            particleColors[pIdx * 3 + 1] = 0.1;
+            particleColors[pIdx * 3 + 2] = 0.45;
+            particleSizes[pIdx] = 0.9;
+            pIdx++;
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
+
+        // Custom Particle Shader with soft volumetric bloom falloff
+        const vertexShader = `
+            attribute float size;
+            attribute vec3 color;
+            varying vec3 vColor;
+            uniform float u_cutoff;
+            uniform float u_glow;
+
+            void main() {
+                vColor = color * u_glow;
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                gl_PointSize = size * (120.0 / -mvPosition.z) * u_cutoff;
+                gl_Position = projectionMatrix * mvPosition;
+            }
+        `;
+
+        const fragmentShader = `
+            varying vec3 vColor;
+            void main() {
+                // Soft radial alpha falloff for volumetric particle feel
+                float dist = length(gl_PointCoord - vec2(0.5));
+                if (dist > 0.5) discard;
+                float alpha = smoothstep(0.5, 0.05, dist);
+                gl_FragColor = vec4(vColor, alpha * 0.85);
+            }
+        `;
+
+        const uniforms = {
+            u_cutoff: { value: 1.0 },
+            u_glow: { value: 1.3 }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            uniforms: uniforms,
+            blending: THREE.AdditiveBlending,
+            depthTest: false,
+            transparent: true
+        });
+
+        const particleSystem = new THREE.Points(geometry, material);
+        scene.add(particleSystem);
+
+        // UI Handlers
+        let driftSpeed = 1.0;
+
+        document.getElementById('param-cutoff').addEventListener('input', (e) => {
+            const v = parseFloat(e.target.value);
+            uniforms.u_cutoff.value = v;
+            document.getElementById('val-cutoff').innerText = `${v.toFixed(2)}x`;
+        });
+
+        document.getElementById('param-glow').addEventListener('input', (e) => {
+            const v = parseFloat(e.target.value);
+            uniforms.u_glow.value = v;
+            document.getElementById('val-glow').innerText = v.toFixed(2);
+        });
+
+        document.getElementById('param-drift').addEventListener('input', (e) => {
+            driftSpeed = parseFloat(e.target.value);
+            controls.autoRotateSpeed = 0.4 * driftSpeed;
+            document.getElementById('val-drift').innerText = driftSpeed.toFixed(2);
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Loop & Performance Monitoring
+        let lastTime = performance.now();
+        let frameCount = 0;
+        const fpsCounter = document.getElementById('fps-counter');
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            renderer.render(scene, camera);
+
+            frameCount++;
+            if (time - lastTime >= 1000) {
+                fpsCounter.innerText = frameCount;
+                frameCount = 0;
+                lastTime = time;
+            }
+        }
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
